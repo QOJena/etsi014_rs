@@ -1,4 +1,8 @@
 
+// Conditionally import blocking
+#[cfg(feature="blocking")]
+pub mod blocking;
+
 use serde::{Deserialize, Serialize};
 
 #[allow(non_snake_case)]
@@ -85,12 +89,12 @@ impl Endpoint {
 
     // TODO: IMPORTANT -> Change to https
 
-    pub fn status(&self) -> Result<StatusResponse, Error> {
-        let resp = reqwest::blocking::get(format!("http://{}/api/v1/keys/{}/status", self.KME_hostname, self.slave_SAE_ID));
+    pub async fn status(&self) -> Result<StatusResponse, Error> {
+        let resp = reqwest::get(format!("http://{}/api/v1/keys/{}/status", self.KME_hostname, self.slave_SAE_ID)).await;
         
         match resp {
             Ok(response) => {
-                match response.json::<StatusResponse>() {
+                match response.json::<StatusResponse>().await {
                     Ok(status) => Ok(status),
                     Err(err) => Err(Error {
                         message: err.to_string(),
@@ -107,8 +111,8 @@ impl Endpoint {
         }
     }
 
-    pub fn get_key(&self, key_request: Option<&KeyRequest>) -> Result<KeyResponse, Error> {
-        let client: reqwest::blocking::Client = reqwest::blocking::Client::new();
+    pub async fn get_key(&self, key_request: Option<&KeyRequest>) -> Result<KeyResponse, Error> {
+        let client: reqwest::Client = reqwest::Client::new();
 
         // Create the json body
         let json_body = match key_request {
@@ -117,18 +121,18 @@ impl Endpoint {
         };
 
         let resp = client.post(format!("http://{}/api/v1/keys/{}/enc_keys", self.KME_hostname, self.slave_SAE_ID))
-                    .json(&json_body).send();
+                    .json(&json_body).send().await;
         
 
         match resp {
             Ok(response) => {
                 if response.status().is_client_error() || response.status().is_server_error() {
-                    match response.json::<Error>() {
+                    match response.json::<Error>().await {
                         Ok(error) => Err(error),
                         Err(err) => Err(Error { message: err.to_string(), details: None })
                     }
                 } else {
-                    match response.json::<KeyResponse>() {
+                    match response.json::<KeyResponse>().await {
                         Ok(key) => Ok(key),
                         Err(err) => Err(Error { message: err.to_string(), details: None })
                     }
@@ -141,21 +145,21 @@ impl Endpoint {
         }
     }
 
-    pub fn get_key_with_id(&self, key_with_id: &KeyIdRequest) -> Result<KeyResponse, Error> {
-        let client = reqwest::blocking::Client::new();
+    pub async fn get_key_with_id(&self, key_with_id: &KeyIdRequest) -> Result<KeyResponse, Error> {
+        let client = reqwest::Client::new();
 
         let resp = client.post(format!("http://{}/api/v1/keys/{}/dec_keys", self.KME_hostname, self.slave_SAE_ID))
-                    .json(&key_with_id).send();
+                    .json(&key_with_id).send().await;
 
         match resp {
             Ok(response) => {
                 if response.status().is_client_error() || response.status().is_server_error() {
-                    match response.json::<Error>() {
+                    match response.json::<Error>().await {
                         Ok(error) => Err(error),
                         Err(err) => Err(Error { message: err.to_string(), details: None })
                     }
                 } else {
-                    match response.json::<KeyResponse>() {
+                    match response.json::<KeyResponse>().await {
                         Ok(key) => Ok(key),
                         Err(err) => Err(Error { message: err.to_string(), details: None })
                     }
