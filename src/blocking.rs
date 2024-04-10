@@ -16,6 +16,13 @@ pub struct Endpoint {
 
 impl Endpoint {
 
+    pub fn new(kme_hostname: &str, slave_sae_id: &str) -> Self {
+        Self {
+            KME_hostname: String::from(kme_hostname),
+            slave_SAE_ID: String::from(slave_sae_id)
+        }
+    }
+
     // TODO: IMPORTANT -> Change to https
 
     pub fn status(&self) -> Result<StatusResponse, Error> {
@@ -102,5 +109,55 @@ impl Endpoint {
 
 
 
+#[cfg(test)]
+mod test {
+    use crate::{KeyId, KeyIdRequest, KeyRequest};
+
+    use super::Endpoint;
+
+    #[test] 
+    fn status_test() {
+        let endpoint = Endpoint::new("127.0.0.1:8888", "bob");
+        
+        let status = match endpoint.status() {
+            Ok(ok) => panic!("Should not connect!"),
+            Err(_) => return
+        };
+
+        
+    }
+
+    #[test] 
+    fn get_key_test() {
+        let endpoint = Endpoint::new("127.0.0.1:8888", "bob");
+
+        let request = KeyRequest { number: Some(3), size: Some(256), additional_slave_SAE_IDs: None };
+
+        let keys = match endpoint.get_key(Some(&request)) {
+            Ok(ok) => panic!("Should not connect!"),
+            Err(_) => return
+        };
+
+        
+    }
+
+    #[test] 
+    fn get_key_with_id_test() {
+        let endpoint = Endpoint::new("127.0.0.1:8888", "bob");
+        
+        let mut ids = Vec::new();
+        ids.push(KeyId {
+            key_ID: "0".to_string()
+        });
+
+        let request = KeyIdRequest { key_IDs: ids };
+
+
+        let keys = match endpoint.get_key_with_id(&request) {
+            Ok(ok) => panic!("Should not connect!"),
+            Err(_) => return
+        };
+    }
+}
 
 

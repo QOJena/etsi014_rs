@@ -6,7 +6,7 @@ pub mod blocking;
 use serde::{Deserialize, Serialize};
 
 #[allow(non_snake_case)]
-#[derive(Serialize, Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug, Default, PartialEq)]
 pub struct StatusResponse {
     pub source_KME_ID: String,
     pub target_KME_ID: String,
@@ -61,6 +61,10 @@ pub struct Error {
     pub details: Option<Vec<serde_json::Value>>
 }
 
+/**
+ * 
+ * Defines the ETSI014 endpoint of the QKD device. This allows to make all the etsi request implemented.
+ */
 #[allow(non_snake_case)]
 #[derive(Debug, Clone)]
 pub struct Endpoint {
@@ -87,8 +91,14 @@ impl Error {
 
 impl Endpoint {
 
-    // TODO: IMPORTANT -> Change to https
+    pub fn new(kme_hostname: &str, slave_sae_id: &str) -> Self {
+        Self {
+            KME_hostname: String::from(kme_hostname),
+            slave_SAE_ID: String::from(slave_sae_id)
+        }
+    }
 
+    // TODO: IMPORTANT -> Change to https
     pub async fn status(&self) -> Result<StatusResponse, Error> {
         let resp = reqwest::get(format!("http://{}/api/v1/keys/{}/status", self.KME_hostname, self.slave_SAE_ID)).await;
         
@@ -175,5 +185,58 @@ impl Endpoint {
 
 }
 
+#[cfg(test)]
+mod test {
 
+    use crate::{KeyId, KeyIdRequest, KeyRequest, StatusResponse};
+
+    use super::{Endpoint, Error};
+    use serde::{Deserialize, Serialize};
+    use tokio::test;
+    // use tokio_test;
+
+    #[tokio::test] 
+    async fn status_test() {
+        let endpoint = Endpoint::new("127.0.0.1:8888", "bob");
+        
+        let status = match endpoint.status().await {
+            Ok(ok) => panic!("Should not connect!"),
+            Err(_) => return
+        };
+
+        
+    }
+
+    #[tokio::test] 
+    async fn get_key_test() {
+        let endpoint = Endpoint::new("127.0.0.1:8888", "bob");
+
+        let request = KeyRequest { number: Some(3), size: Some(256), additional_slave_SAE_IDs: None };
+
+        let keys = match endpoint.get_key(Some(&request)).await {
+            Ok(ok) => panic!("Should not connect!"),
+            Err(_) => return
+        };
+
+        
+    }
+
+    #[tokio::test] 
+    async fn get_key_with_id_test() {
+        let endpoint = Endpoint::new("127.0.0.1:8888", "bob");
+        
+        let mut ids = Vec::new();
+        ids.push(KeyId {
+            key_ID: "0".to_string()
+        });
+
+        let request = KeyIdRequest { key_IDs: ids };
+
+
+        let keys = match endpoint.get_key_with_id(&request).await {
+            Ok(ok) => panic!("Should not connect!"),
+            Err(_) => return
+        };
+    }
+}
 
