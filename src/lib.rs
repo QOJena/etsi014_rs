@@ -89,6 +89,24 @@ impl Error {
     }
 }
 
+impl KeyRequest {
+    pub fn new(number: Option<u32>, size: Option<u32>) -> Self {
+        Self {
+            number,
+            size,
+            additional_slave_SAE_IDs: None
+        }
+    }
+}
+
+impl KeyIdRequest {
+    pub fn new(key_ids: Vec<KeyId>) -> Self {
+        Self {
+            key_IDs: key_ids
+        }
+    }
+}
+
 impl Endpoint {
 
     pub fn new(kme_hostname: &str, slave_sae_id: &str) -> Self {
@@ -121,17 +139,17 @@ impl Endpoint {
         }
     }
 
-    pub async fn get_key(&self, key_request: Option<&KeyRequest>) -> Result<KeyResponse, Error> {
+    pub async fn get_key(&self, key_request: KeyRequest) -> Result<KeyResponse, Error> {
         let client: reqwest::Client = reqwest::Client::new();
 
         // Create the json body
-        let json_body = match key_request {
-            Some(request) => request,
-            None => &KeyRequest { number: Some(1), size: Some(256), additional_slave_SAE_IDs: None }
-        };
+        // let json_body = match key_request {
+        //     Some(request) => request,
+        //     None => &KeyRequest { number: Some(1), size: Some(256), additional_slave_SAE_IDs: None }
+        // };
 
         let resp = client.post(format!("http://{}/api/v1/keys/{}/enc_keys", self.KME_hostname, self.slave_SAE_ID))
-                    .json(&json_body).send().await;
+                    .json(&key_request).send().await;
         
 
         match resp {
@@ -213,7 +231,7 @@ mod test {
 
         let request = KeyRequest { number: Some(3), size: Some(256), additional_slave_SAE_IDs: None };
 
-        let keys = match endpoint.get_key(Some(&request)).await {
+        let keys = match endpoint.get_key(request).await {
             Ok(ok) => panic!("Should not connect!"),
             Err(_) => return
         };

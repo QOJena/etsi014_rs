@@ -43,17 +43,17 @@ impl Endpoint {
         
     }
 
-    pub fn get_key(&self, key_request: Option<&KeyRequest>) -> Result<KeyResponse, Error> {
+    pub fn get_key(&self, key_request: KeyRequest) -> Result<KeyResponse, Error> {
         let client: reqwest::blocking::Client = reqwest::blocking::Client::new();
 
-        // Create the json body
-        let json_body = match key_request {
-            Some(request) => request,
-            None => &KeyRequest { number: Some(1), size: Some(256), additional_slave_SAE_IDs: None }
-        };
+        // // Create the json body
+        // let json_body = match key_request {
+        //     Some(request) => request,
+        //     None => &KeyRequest { number: Some(1), size: Some(256), additional_slave_SAE_IDs: None }
+        // };
 
         let resp = client.post(format!("http://{}/api/v1/keys/{}/enc_keys", self.KME_hostname, self.slave_SAE_ID)).timeout(Duration::from_millis(500))
-                    .json(&json_body).send();
+                    .json(&key_request).send();
         
 
         match resp {
@@ -133,7 +133,7 @@ mod test {
 
         let request = KeyRequest { number: Some(3), size: Some(256), additional_slave_SAE_IDs: None };
 
-        let keys = match endpoint.get_key(Some(&request)) {
+        let keys = match endpoint.get_key(request) {
             Ok(ok) => panic!("Should not connect!"),
             Err(_) => return
         };
