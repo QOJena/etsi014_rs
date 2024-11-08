@@ -122,12 +122,22 @@ impl Endpoint {
         
         match resp {
             Ok(response) => {
-                match response.json::<StatusResponse>().await {
-                    Ok(status) => Ok(status),
-                    Err(err) => Err(Error {
-                        message: err.to_string(),
-                        details: None
-                    })
+                if response.status().is_client_error() || response.status().is_server_error() {
+                    match response.json::<Error>().await {
+                        Ok(error) => Err(error),
+                        Err(err) => Err(Error {
+                            message: err.to_string(),
+                            details: None
+                        })
+                    }
+                } else {
+                    match response.json::<StatusResponse>().await {
+                        Ok(status) => Ok(status),
+                        Err(err) => Err(Error {
+                            message: err.to_string(),
+                            details: None
+                        })
+                    }
                 }
             },
             Err(err) => {
