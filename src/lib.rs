@@ -121,7 +121,7 @@ impl Endpoint {
     //     }
     // }
 
-    pub fn new(kme_hostname: &str, slave_sae_id: &str, cert: Option<&str>,  identity: Option<&str>) -> Result<Self, anyhow::Error> {
+    pub fn new(kme_hostname: &str, slave_sae_id: &str, cert: Option<String>,  identity: Option<String>) -> Result<Self, anyhow::Error> {
 
         let mut client_builder = reqwest::Client::builder()
             .user_agent("etsi014-client/0.1.0")
