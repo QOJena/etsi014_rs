@@ -121,17 +121,24 @@ impl Endpoint {
     //     }
     // }
 
-    pub fn new(kme_hostname: &str, slave_sae_id: &str, cert: Option<reqwest::Certificate>,  identity: Option<Identity>) -> Result<Self, reqwest::Error> {
+    pub fn new(kme_hostname: &str, slave_sae_id: &str, cert: Option<&str>,  identity: Option<&str>) -> Result<Self, anyhow::Error> {
 
         let mut client_builder = reqwest::Client::builder()
             .user_agent("etsi014-client/0.1.0")
             .use_rustls_tls();
 
         if let Some(c) = cert {
+            let certificate = std::fs::read(c)?;
+            let c = reqwest::Certificate::from_pem(&certificate)?;
+
             client_builder = client_builder.add_root_certificate(c);
         }
 
         if let Some(id) = identity {
+
+            let identity = std::fs::read(id)?;
+            let id = Identity::from_pem(&identity)?;
+
             client_builder = client_builder.identity(id);
         }
 
