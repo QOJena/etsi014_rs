@@ -3,7 +3,7 @@
 
 use std::time::Duration;
 
-use crate::{StatusResponse, Error, KeyRequest, KeyResponse, KeyIdRequest};
+use crate::{core::{self, build_url}, Error, KeyIdRequest, KeyRequest, KeyResponse, StatusResponse};
 
 use http::{header::USER_AGENT, Request, Response};
 use reqwest::Identity;
@@ -40,13 +40,17 @@ impl Endpoint {
         })
     }
 
+    fn build_url(&self, path: &str) -> String {
+        core::build_url(&self.KME_hostname, self.slave_SAE_ID.as_str(), path)
+    }
+
     // TODO: IMPORTANT -> Change to https
 
     pub fn status(&self) -> Result<StatusResponse, Error> {
 
         // Add timeout
 
-        let response = self.client.get(format!("https://{}/api/v1/keys/{}/status", self.KME_hostname, self.slave_SAE_ID)).timeout(Duration::from_millis(500)).send();
+        let response = self.client.get(self.build_url("status")).timeout(Duration::from_millis(500)).send();
 
         let response = match response {
             Ok(resp) => {
@@ -87,7 +91,7 @@ impl Endpoint {
         //     None => &KeyRequest { number: Some(1), size: Some(256), additional_slave_SAE_IDs: None }
         // };
 
-        let resp = client.post(format!("https://{}/api/v1/keys/{}/enc_keys", self.KME_hostname, self.slave_SAE_ID)).timeout(Duration::from_millis(500))
+        let resp = client.post(self.build_url("enc_keys")).timeout(Duration::from_millis(500))
                     .json(&key_request).send();
         
 
@@ -115,7 +119,7 @@ impl Endpoint {
     pub fn get_key_with_id(&self, key_with_id: &KeyIdRequest) -> Result<KeyResponse, Error> {
         let client = reqwest::blocking::Client::new();
 
-        let resp = client.post(format!("https://{}/api/v1/keys/{}/dec_keys", self.KME_hostname, self.slave_SAE_ID)).timeout(Duration::from_millis(500))
+        let resp = client.post(self.build_url("dec_keys")).timeout(Duration::from_millis(500))
                     .json(&key_with_id).send();
 
         match resp {

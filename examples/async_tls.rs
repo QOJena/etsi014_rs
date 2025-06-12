@@ -5,8 +5,10 @@ use etsi014::Endpoint;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
+
+
     env_logger::init();
-    
+    log::debug!("Starting the KME client example...");
 
     let kme_hostname = "10.50.0.21:7443";
     let slave_sae_id = "vKMS";

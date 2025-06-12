@@ -3,6 +3,8 @@
 #[cfg(feature="blocking")]
 pub mod blocking;
 
+mod core;
+
 use reqwest::{Client, Identity};
 use serde::{Deserialize, Serialize};
 
@@ -142,8 +144,12 @@ impl Endpoint {
         })
     }
 
+    fn build_url(&self, path: &str) -> String {
+        core::build_url(&self.KME_hostname, self.slave_SAE_ID.as_str(), path)
+    }
+
     pub async fn status(&self) -> Result<StatusResponse, Error> {
-        let resp = self.client.get(format!("https://{}/api/v1/keys/{}/status", self.KME_hostname, self.slave_SAE_ID)).send().await;
+        let resp = self.client.get(self.build_url("status")).send().await;
         
         let response = match resp {
             Ok(resp) => {
@@ -183,7 +189,7 @@ impl Endpoint {
         //     None => &KeyRequest { number: Some(1), size: Some(256), additional_slave_SAE_IDs: None }
         // };
 
-        let resp = client.post(format!("https://{}/api/v1/keys/{}/enc_keys", self.KME_hostname, self.slave_SAE_ID))
+        let resp = client.post(self.build_url("enc_keys"))
                     .json(&key_request).send().await;
         
 
@@ -211,7 +217,7 @@ impl Endpoint {
     pub async fn get_key_with_id(&self, key_with_id: &KeyIdRequest) -> Result<KeyResponse, Error> {
         let client = reqwest::Client::new();
 
-        let resp = client.post(format!("https://{}/api/v1/keys/{}/dec_keys", self.KME_hostname, self.slave_SAE_ID))
+        let resp = client.post(self.build_url("dec_keys"))
                     .json(&key_with_id).send().await;
 
         match resp {
