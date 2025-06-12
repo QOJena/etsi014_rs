@@ -3,6 +3,7 @@
 #[cfg(feature="blocking")]
 pub mod blocking;
 
+use reqwest::{Client, Identity};
 use serde::{Deserialize, Serialize};
 
 #[allow(non_snake_case)]
@@ -70,6 +71,7 @@ pub struct Error {
 pub struct Endpoint {
     pub KME_hostname: String,
     pub slave_SAE_ID: String,
+    pub(crate) client: Client,
 }
 
 const SIZE_UUID: usize = 16;
@@ -112,40 +114,63 @@ impl Endpoint {
     pub fn new(kme_hostname: &str, slave_sae_id: &str) -> Self {
         Self {
             KME_hostname: String::from(kme_hostname),
-            slave_SAE_ID: String::from(slave_sae_id)
+            slave_SAE_ID: String::from(slave_sae_id),
+            client: Client::new(),
         }
     }
 
-    // TODO: IMPORTANT -> Change to https
-    pub async fn status(&self) -> Result<StatusResponse, Error> {
-        let resp = reqwest::get(format!("http://{}/api/v1/keys/{}/status", self.KME_hostname, self.slave_SAE_ID)).await;
+    pub fn new_tls(kme_hostname: &str, slave_sae_id: &str, cert: Option<reqwest::Certificate>,  identity: Option<Identity>) -> Result<Self, reqwest::Error> {
+
+        let mut client_builder = reqwest::Client::builder()
+            .user_agent("etsi014-client/0.1.0")
+            .use_rustls_tls();
+
+        if let Some(c) = cert {
+            client_builder = client_builder.add_root_certificate(c);
+        }
+
+        if let Some(id) = identity {
+            client_builder = client_builder.identity(id);
+        }
+
+        let client = client_builder.build()?;
         
-        match resp {
-            Ok(response) => {
-                if response.status().is_client_error() || response.status().is_server_error() {
-                    match response.json::<Error>().await {
-                        Ok(error) => Err(error),
-                        Err(err) => Err(Error {
-                            message: err.to_string(),
-                            details: None
-                        })
-                    }
-                } else {
-                    match response.json::<StatusResponse>().await {
-                        Ok(status) => Ok(status),
-                        Err(err) => Err(Error {
-                            message: err.to_string(),
-                            details: None
-                        })
+        Ok(Self {
+            KME_hostname: String::from(kme_hostname),
+            slave_SAE_ID: String::from(slave_sae_id),
+            client,
+        })
+    }
+
+    pub async fn status(&self) -> Result<StatusResponse, Error> {
+        let resp = self.client.get(format!("https://{}/api/v1/keys/{}/status", self.KME_hostname, self.slave_SAE_ID)).send().await;
+        
+        let response = match resp {
+            Ok(resp) => {
+                if resp.status().is_client_error() || resp.status().is_server_error() {
+                    log::error!("Error response: {:?}", resp);
+                    match resp.json::<Error>().await {
+                        Ok(error) => return Err(error),
+                        Err(err) => return Err(Error { message: err.to_string(), details: None })
                     }
                 }
+                resp
             },
             Err(err) => {
-                Err(Error {
-                    message: err.to_string(),
-                    details: None
-                })
+            log::error!("Error sending request: {}", err);
+                return Err(Error { message: err.to_string(), details: None });
             }
+            
+        };
+
+        log::debug!("Response: {:?}", response);
+        
+        match response.json::<StatusResponse>().await {
+            Ok(status) => Ok(status),
+            Err(err) => Err(Error {
+                message: err.to_string(),
+                details: None
+            })
         }
     }
 
@@ -158,7 +183,7 @@ impl Endpoint {
         //     None => &KeyRequest { number: Some(1), size: Some(256), additional_slave_SAE_IDs: None }
         // };
 
-        let resp = client.post(format!("http://{}/api/v1/keys/{}/enc_keys", self.KME_hostname, self.slave_SAE_ID))
+        let resp = client.post(format!("https://{}/api/v1/keys/{}/enc_keys", self.KME_hostname, self.slave_SAE_ID))
                     .json(&key_request).send().await;
         
 
@@ -186,7 +211,7 @@ impl Endpoint {
     pub async fn get_key_with_id(&self, key_with_id: &KeyIdRequest) -> Result<KeyResponse, Error> {
         let client = reqwest::Client::new();
 
-        let resp = client.post(format!("http://{}/api/v1/keys/{}/dec_keys", self.KME_hostname, self.slave_SAE_ID))
+        let resp = client.post(format!("https://{}/api/v1/keys/{}/dec_keys", self.KME_hostname, self.slave_SAE_ID))
                     .json(&key_with_id).send().await;
 
         match resp {

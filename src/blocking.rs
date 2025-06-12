@@ -5,22 +5,39 @@ use std::time::Duration;
 
 use crate::{StatusResponse, Error, KeyRequest, KeyResponse, KeyIdRequest};
 
-use http::{Request,Response};
+use http::{header::USER_AGENT, Request, Response};
+use reqwest::Identity;
 
 #[allow(non_snake_case)]
 #[derive(Debug, Clone)]
 pub struct Endpoint {
     pub KME_hostname: String,
     pub slave_SAE_ID: String,
+    pub client: reqwest::blocking::Client,
 }
 
 impl Endpoint {
 
-    pub fn new(kme_hostname: &str, slave_sae_id: &str) -> Self {
-        Self {
-            KME_hostname: String::from(kme_hostname),
-            slave_SAE_ID: String::from(slave_sae_id)
+    pub fn new(kme_hostname: &str, slave_sae_id: &str, cert: Option<reqwest::Certificate>,  identity: Option<Identity>) -> Result<Self, reqwest::Error> {
+
+        let mut client_builder = reqwest::blocking::Client::builder()
+            .user_agent("etsi014-client/0.1.0");
+
+        if let Some(c) = cert {
+            client_builder = client_builder.add_root_certificate(c);
         }
+
+        if let Some(id) = identity {
+            client_builder = client_builder.identity(id);
+        }
+
+        let client = client_builder.build()?;
+        
+        Ok(Self {
+            KME_hostname: String::from(kme_hostname),
+            slave_SAE_ID: String::from(slave_sae_id),
+            client,
+        })
     }
 
     // TODO: IMPORTANT -> Change to https
@@ -29,9 +46,27 @@ impl Endpoint {
 
         // Add timeout
 
-        let client = reqwest::blocking::Client::new();
+        let response = self.client.get(format!("https://{}/api/v1/keys/{}/status", self.KME_hostname, self.slave_SAE_ID)).timeout(Duration::from_millis(500)).send();
 
-        let response = client.get(format!("http://{}/api/v1/keys/{}/status", self.KME_hostname, self.slave_SAE_ID)).timeout(Duration::from_millis(500)).send().map_err(|e| Error::new(e.to_string()))?;
+        let response = match response {
+            Ok(resp) => {
+                if resp.status().is_client_error() || resp.status().is_server_error() {
+                    log::error!("Error response: {:?}", resp);
+                    match resp.json::<Error>() {
+                        Ok(error) => return Err(error),
+                        Err(err) => return Err(Error { message: err.to_string(), details: None })
+                    }
+                }
+                resp
+            },
+            Err(err) => {
+            log::error!("Error sending request: {}", err);
+                return Err(Error { message: err.to_string(), details: None });
+            }
+            
+        };
+
+        log::debug!("Response: {:?}", response);
         
         match response.json::<StatusResponse>() {
             Ok(status) => Ok(status),
@@ -52,7 +87,7 @@ impl Endpoint {
         //     None => &KeyRequest { number: Some(1), size: Some(256), additional_slave_SAE_IDs: None }
         // };
 
-        let resp = client.post(format!("http://{}/api/v1/keys/{}/enc_keys", self.KME_hostname, self.slave_SAE_ID)).timeout(Duration::from_millis(500))
+        let resp = client.post(format!("https://{}/api/v1/keys/{}/enc_keys", self.KME_hostname, self.slave_SAE_ID)).timeout(Duration::from_millis(500))
                     .json(&key_request).send();
         
 
@@ -80,7 +115,7 @@ impl Endpoint {
     pub fn get_key_with_id(&self, key_with_id: &KeyIdRequest) -> Result<KeyResponse, Error> {
         let client = reqwest::blocking::Client::new();
 
-        let resp = client.post(format!("http://{}/api/v1/keys/{}/dec_keys", self.KME_hostname, self.slave_SAE_ID)).timeout(Duration::from_millis(500))
+        let resp = client.post(format!("https://{}/api/v1/keys/{}/dec_keys", self.KME_hostname, self.slave_SAE_ID)).timeout(Duration::from_millis(500))
                     .json(&key_with_id).send();
 
         match resp {
@@ -117,7 +152,7 @@ mod test {
 
     #[test] 
     fn status_test() {
-        let endpoint = Endpoint::new("127.0.0.1:8888", "bob");
+        let endpoint = Endpoint::new("127.0.0.1:8888", "bob", None, None).unwrap();
         
         let status = match endpoint.status() {
             Ok(ok) => panic!("Should not connect!"),
@@ -129,7 +164,7 @@ mod test {
 
     #[test] 
     fn get_key_test() {
-        let endpoint = Endpoint::new("127.0.0.1:8888", "bob");
+        let endpoint = Endpoint::new("127.0.0.1:8888", "bob", None, None).unwrap();
 
         let request = KeyRequest { number: Some(3), size: Some(256), additional_slave_SAE_IDs: None };
 
@@ -143,7 +178,7 @@ mod test {
 
     #[test] 
     fn get_key_with_id_test() {
-        let endpoint = Endpoint::new("127.0.0.1:8888", "bob");
+        let endpoint = Endpoint::new("127.0.0.1:8888", "bob", None, None).unwrap();
         
         let mut ids = Vec::new();
         ids.push(KeyId {
