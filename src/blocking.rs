@@ -14,6 +14,7 @@ pub struct Endpoint {
     pub KME_hostname: String,
     pub slave_SAE_ID: String,
     pub client: reqwest::blocking::Client,
+    tls: bool,
 }
 
 impl Endpoint {
@@ -22,6 +23,8 @@ impl Endpoint {
 
         let mut client_builder = reqwest::blocking::Client::builder()
             .user_agent("etsi014-client/0.1.0");
+
+        let tls = cert.is_some() || identity.is_some();
 
         if let Some(c) = cert {
             client_builder = client_builder.add_root_certificate(c);
@@ -37,11 +40,12 @@ impl Endpoint {
             KME_hostname: String::from(kme_hostname),
             slave_SAE_ID: String::from(slave_sae_id),
             client,
+            tls
         })
     }
 
     fn build_url(&self, path: &str) -> String {
-        core::build_url(&self.KME_hostname, self.slave_SAE_ID.as_str(), path)
+        core::build_url(&self.KME_hostname, self.slave_SAE_ID.as_str(), path, self.tls)
     }
 
     // TODO: IMPORTANT -> Change to https

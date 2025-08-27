@@ -1,6 +1,6 @@
 use std::{fs::{self, File}, io::Read};
 
-use etsi014::Endpoint;
+use etsi014::{Endpoint, KeyRequest};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -22,6 +22,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
         Err(err) => {
             eprintln!("Error fetching status: {}", err.message);
+        }
+    }
+
+    let key = endpoint.get_key(KeyRequest::new(Some(1), Some(256))).await;
+    match key {
+        Ok(key_response) => {
+            println!("Key: {:?}", key_response);
+        },
+        Err(err) => {
+            eprintln!("Error fetching key: {}", err.message);
         }
     }
 

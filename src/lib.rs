@@ -74,6 +74,7 @@ pub struct Endpoint {
     pub KME_hostname: String,
     pub slave_SAE_ID: String,
     pub(crate) client: Client,
+    tls: bool,
 }
 
 const SIZE_UUID: usize = 16;
@@ -121,11 +122,13 @@ impl Endpoint {
     //     }
     // }
 
-    pub fn new(kme_hostname: &str, slave_sae_id: &str, cert: Option<String>,  identity: Option<String>) -> Result<Self, anyhow::Error> {
+    pub fn new(kme_hostname: &str, slave_sae_id: &str, cert: Option<String>, identity: Option<String>) -> Result<Self, anyhow::Error> {
 
         let mut client_builder = reqwest::Client::builder()
             .user_agent("etsi014-client/0.1.0")
             .use_rustls_tls();
+
+        let tls = cert.is_some() || identity.is_some();
 
         if let Some(c) = cert {
             let certificate = std::fs::read(c)?;
@@ -143,16 +146,18 @@ impl Endpoint {
         }
 
         let client = client_builder.build()?;
-        
+
+
         Ok(Self {
             KME_hostname: String::from(kme_hostname),
             slave_SAE_ID: String::from(slave_sae_id),
             client,
+            tls
         })
     }
 
     fn build_url(&self, path: &str) -> String {
-        core::build_url(&self.KME_hostname, self.slave_SAE_ID.as_str(), path)
+        core::build_url(&self.KME_hostname, self.slave_SAE_ID.as_str(), path, self.tls)
     }
 
     pub async fn status(&self) -> Result<StatusResponse, Error> {
@@ -188,7 +193,6 @@ impl Endpoint {
     }
 
     pub async fn get_key(&self, key_request: KeyRequest) -> Result<KeyResponse, Error> {
-        let client: reqwest::Client = reqwest::Client::new();
 
         // Create the json body
         // let json_body = match key_request {
@@ -196,18 +200,20 @@ impl Endpoint {
         //     None => &KeyRequest { number: Some(1), size: Some(256), additional_slave_SAE_IDs: None }
         // };
 
-        let resp = client.post(self.build_url("enc_keys"))
+        let resp = self.client.post(self.build_url("enc_keys"))
                     .json(&key_request).send().await;
         
 
         match resp {
             Ok(response) => {
                 if response.status().is_client_error() || response.status().is_server_error() {
+                    log::error!("Error response: {:?}", response);
                     match response.json::<Error>().await {
                         Ok(error) => Err(error),
                         Err(err) => Err(Error { message: err.to_string(), details: None })
                     }
                 } else {
+                    log::error!("Error response: {:?}", response);
                     match response.json::<KeyResponse>().await {
                         Ok(key) => Ok(key),
                         Err(err) => Err(Error { message: err.to_string(), details: None })
@@ -216,6 +222,7 @@ impl Endpoint {
                 
             },
             Err(err) => {
+                log::error!("Error response: {:?}", err);
                 Err(Error { message: err.to_string(), details: None })
             }
         }
