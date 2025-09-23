@@ -1,6 +1,5 @@
-
 // Conditionally import blocking
-#[cfg(feature="blocking")]
+#[cfg(feature = "blocking")]
 pub mod blocking;
 
 mod core;
@@ -171,9 +170,7 @@ impl KeyIdRequest {
     }
 }
 
-
 impl Endpoint {
-
     /// Create a new [`Endpoint`] pointing to a KME.
     ///
     /// # Arguments
@@ -185,8 +182,12 @@ impl Endpoint {
     /// # Errors
     /// Returns an error if certificates cannot be loaded or if the
     /// HTTP client cannot be built.
-    pub fn new(kme_hostname: &str, slave_sae_id: &str, cert: Option<String>, identity: Option<String>) -> Result<Self, anyhow::Error> {
-
+    pub fn new(
+        kme_hostname: &str,
+        slave_sae_id: &str,
+        cert: Option<String>,
+        identity: Option<String>,
+    ) -> Result<Self, anyhow::Error> {
         let mut client_builder = reqwest::Client::builder()
             .user_agent("etsi014-client/0.1.0")
             .use_rustls_tls();
@@ -201,7 +202,6 @@ impl Endpoint {
         }
 
         if let Some(id) = identity {
-
             let identity = std::fs::read(id)?;
             let id = Identity::from_pem(&identity)?;
 
@@ -210,18 +210,22 @@ impl Endpoint {
 
         let client = client_builder.build()?;
 
-
         Ok(Self {
             KME_hostname: String::from(kme_hostname),
             slave_SAE_ID: String::from(slave_sae_id),
             client,
-            tls
+            tls,
         })
     }
 
     /// Build the full URL for a given ETSI 014 path.
     fn build_url(&self, path: &str) -> String {
-        core::build_url(&self.KME_hostname, self.slave_SAE_ID.as_str(), path, self.tls)
+        core::build_url(
+            &self.KME_hostname,
+            self.slave_SAE_ID.as_str(),
+            path,
+            self.tls,
+        )
     }
 
     /// Query the `/status` endpoint.
@@ -229,33 +233,40 @@ impl Endpoint {
     /// Returns information about the KME and its current capabilities.
     pub async fn status(&self) -> Result<StatusResponse, Error> {
         let resp = self.client.get(self.build_url("status")).send().await;
-        
+
         let response = match resp {
             Ok(resp) => {
                 if resp.status().is_client_error() || resp.status().is_server_error() {
                     log::error!("Error response: {:?}", resp);
                     match resp.json::<Error>().await {
                         Ok(error) => return Err(error),
-                        Err(err) => return Err(Error { message: err.to_string(), details: None })
+                        Err(err) => {
+                            return Err(Error {
+                                message: err.to_string(),
+                                details: None,
+                            })
+                        }
                     }
                 }
                 resp
-            },
-            Err(err) => {
-            log::error!("Error sending request: {}", err);
-                return Err(Error { message: err.to_string(), details: None });
             }
-            
+            Err(err) => {
+                log::error!("Error sending request: {}", err);
+                return Err(Error {
+                    message: err.to_string(),
+                    details: None,
+                });
+            }
         };
 
         log::debug!("Response: {:?}", response);
-        
+
         match response.json::<StatusResponse>().await {
             Ok(status) => Ok(status),
             Err(err) => Err(Error {
                 message: err.to_string(),
-                details: None
-            })
+                details: None,
+            }),
         }
     }
 
@@ -267,10 +278,12 @@ impl Endpoint {
     /// # Returns
     /// A [`KeyResponse`] containing the new keys.
     pub async fn get_key(&self, key_request: KeyRequest) -> Result<KeyResponse, Error> {
-
-        let resp = self.client.post(self.build_url("enc_keys"))
-                    .json(&key_request).send().await;
-        
+        let resp = self
+            .client
+            .post(self.build_url("enc_keys"))
+            .json(&key_request)
+            .send()
+            .await;
 
         match resp {
             Ok(response) => {
@@ -278,24 +291,31 @@ impl Endpoint {
                     log::error!("Error response: {:?}", response);
                     match response.json::<Error>().await {
                         Ok(error) => Err(error),
-                        Err(err) => Err(Error { message: err.to_string(), details: None })
+                        Err(err) => Err(Error {
+                            message: err.to_string(),
+                            details: None,
+                        }),
                     }
                 } else {
                     log::error!("Error response: {:?}", response);
                     match response.json::<KeyResponse>().await {
                         Ok(key) => Ok(key),
-                        Err(err) => Err(Error { message: err.to_string(), details: None })
+                        Err(err) => Err(Error {
+                            message: err.to_string(),
+                            details: None,
+                        }),
                     }
                 }
-                
-            },
+            }
             Err(err) => {
                 log::error!("Error response: {:?}", err);
-                Err(Error { message: err.to_string(), details: None })
+                Err(Error {
+                    message: err.to_string(),
+                    details: None,
+                })
             }
         }
     }
-
 
     /// Retrieve specific keys by their IDs via the `/dec_keys` endpoint.
     ///
@@ -307,31 +327,36 @@ impl Endpoint {
     pub async fn get_key_with_id(&self, key_with_id: &KeyIdRequest) -> Result<KeyResponse, Error> {
         let client = reqwest::Client::new();
 
-        let resp = client.post(self.build_url("dec_keys"))
-                    .json(&key_with_id).send().await;
+        let resp = client
+            .post(self.build_url("dec_keys"))
+            .json(&key_with_id)
+            .send()
+            .await;
 
         match resp {
             Ok(response) => {
                 if response.status().is_client_error() || response.status().is_server_error() {
                     match response.json::<Error>().await {
                         Ok(error) => Err(error),
-                        Err(err) => Err(Error { message: err.to_string(), details: None })
+                        Err(err) => Err(Error {
+                            message: err.to_string(),
+                            details: None,
+                        }),
                     }
                 } else {
                     match response.json::<KeyResponse>().await {
                         Ok(key) => Ok(key),
-                        Err(err) => Err(Error { message: err.to_string(), details: None })
+                        Err(err) => Err(Error {
+                            message: err.to_string(),
+                            details: None,
+                        }),
                     }
                 }
-                
-            },
-            Err(err) => {
-                Err(Error { message: err.to_string(), details: None })
             }
+            Err(err) => Err(Error {
+                message: err.to_string(),
+                details: None,
+            }),
         }
     }
-
-
 }
-
-
