@@ -1,0 +1,101 @@
+stages:
+  - build
+  - test
+  - lint
+  - docs
+  - deploy
+
+# ==== Global config ====
+variables:
+  RUST_VERSION: "1.82"
+  PROJECT_DIR: "."   
+  CARGO_TERM_COLOR: "always"
+  CARGO_INCREMENTAL: "0"
+  RUSTFLAGS: "-D warnings"            
+  CARGO_HOME: "/usr/local/cargo"
+  CARGO_TARGET_DIR: "$CI_PROJECT_DIR/target"
+
+default:
+  image: "rust:${RUST_VERSION}"
+  before_script:
+    - rustc -V
+    - cargo -V
+    - cd "$PROJECT_DIR"
+    - rustup component add clippy rustfmt
+
+  cache:
+    key:
+      files:
+        - Cargo.lock
+    paths:
+      - "${CARGO_HOME}/registry"
+      - "${CARGO_HOME}/git"
+      - "target"
+
+# ==== Build ====
+build:
+  stage: build
+  script:
+    - cargo build --workspace --all-targets --locked --verbose
+  artifacts:
+    expire_in: 1 week
+    paths:
+      - target
+
+# ==== Test ====
+test:
+  stage: test
+  needs: ["build"]
+  script:
+    - cargo test --workspace --locked --verbose
+  artifacts:
+    when: always
+    reports:
+      junit: target/junit.xml
+    paths:
+      - target
+
+# ==== Lint: rustfmt ====
+fmt:
+  stage: lint
+  script:
+    - cargo fmt --all -- --check
+
+# ==== Lint: clippy ====
+clippy:
+  stage: lint
+  script:
+    - cargo clippy --workspace --all-targets -- -D warnings
+
+# ==== Docs (build) ====
+docs:
+  stage: docs
+  script:
+    - cargo doc --workspace --no-deps --locked
+    - rm -rf public
+    - mkdir -p public
+    - mv target/doc public/
+    - |
+      CRATE_INDEX="$(ls public | head -n1)"
+      cat > public/index.html <<'HTML'
+      <!DOCTYPE html>
+      <meta http-equiv="refresh" content="0; url=./$(CRATE_INDEX)/index.html">
+      <link rel="canonical" href="./$(CRATE_INDEX)/index.html">
+      HTML
+      sed -i "s/\$(CRATE_INDEX)/$CRATE_INDEX/g" public/index.html
+  artifacts:
+    paths:
+      - public
+  needs: ["build"]
+
+# ==== GitLab Pages (deploy) ====
+pages:
+  stage: deploy
+  needs: ["docs"]
+  script:
+    - echo "Publishing rustdoc to GitLab Pages"
+  artifacts:
+    paths:
+      - public
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
