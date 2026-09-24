@@ -1,231 +1,120 @@
-use std::time::Duration;
+use reqwest::blocking::{Client, RequestBuilder};
+use serde::de::DeserializeOwned;
+use url::Url;
 
 use crate::{
-    core::{self},
-    Error, KeyIdRequest, KeyRequest, KeyResponse, StatusResponse,
+    core::{self, Method},
+    Etsi014Error, KeyIdRequest, KeyRequest, KeyResponse, StatusResponse,
 };
-use reqwest::Identity;
 
-#[allow(non_snake_case)]
+/// Blocking version of [`crate::Endpoint`].
+///
+/// Do not create or drop it inside an async runtime (e.g. Tokio):
+/// `reqwest`'s blocking client panics there.
 #[derive(Debug, Clone)]
 pub struct Endpoint {
-    pub KME_hostname: String,
-    pub slave_SAE_ID: String,
-    pub client: reqwest::blocking::Client,
-    tls: bool,
+    /// Base URL of the local KME (`https://{KME_hostname}`).
+    pub url: Url,
+    /// Internal client used to send requests.
+    pub(crate) client: Client,
 }
 
 impl Endpoint {
-    pub fn new(
-        kme_hostname: &str,
+    /// Build the full URL for a given ETSI 014 path.
+    fn build_url(&self, peer_sae_id: &str, method: Method) -> Result<Url, Etsi014Error> {
+        core::build_url(&self.url, peer_sae_id, method)
+    }
+
+    /// Send a request and decode the KME response into `T`.
+    fn send<T: DeserializeOwned>(&self, request: RequestBuilder) -> Result<T, Etsi014Error> {
+        let response = request.send()?;
+        let status = response.status();
+        if !status.is_success() {
+            log::debug!("KME returned {} for {}", status, response.url());
+        }
+        let body = response.bytes()?;
+        core::decode(status, &body)
+    }
+
+    /// Get status (ETSI GS QKD 014, clause 5.2): `GET /api/v1/keys/{slave_SAE_ID}/status`.
+    ///
+    /// `slave_sae_id`: the peer SAE you would request keys for (this SAE acts as master).
+    pub fn status(&self, slave_sae_id: &str) -> Result<StatusResponse, Etsi014Error> {
+        let url = self.build_url(slave_sae_id, Method::Status)?;
+        self.send(self.client.get(url))
+    }
+
+    /// Get key (clause 5.3): `POST /api/v1/keys/{slave_SAE_ID}/enc_keys`.
+    ///
+    /// `slave_sae_id`: the peer SAE that will later fetch the same keys via `dec_keys`.
+    /// This SAE becomes the master for the returned keys.
+    pub fn get_key(
+        &self,
         slave_sae_id: &str,
-        cert: Option<reqwest::Certificate>,
-        identity: Option<Identity>,
-    ) -> Result<Self, reqwest::Error> {
-        let mut client_builder =
-            reqwest::blocking::Client::builder().user_agent("etsi014-client/0.1.0");
-
-        let tls = cert.is_some() || identity.is_some();
-
-        if let Some(c) = cert {
-            client_builder = client_builder.add_root_certificate(c);
-        }
-
-        if let Some(id) = identity {
-            client_builder = client_builder.identity(id);
-        }
-
-        let client = client_builder.build()?;
-
-        Ok(Self {
-            KME_hostname: String::from(kme_hostname),
-            slave_SAE_ID: String::from(slave_sae_id),
-            client,
-            tls,
-        })
+        key_request: &KeyRequest,
+    ) -> Result<KeyResponse, Etsi014Error> {
+        let url = self.build_url(slave_sae_id, Method::EncKeys)?;
+        self.send(self.client.post(url).json(key_request))
     }
 
-    fn build_url(&self, path: &str) -> String {
-        core::build_url(
-            &self.KME_hostname,
-            self.slave_SAE_ID.as_str(),
-            path,
-            self.tls,
-        )
-    }
-
-    // TODO: IMPORTANT -> Change to https
-
-    pub fn status(&self) -> Result<StatusResponse, Error> {
-        // Add timeout
-
-        let response = self
-            .client
-            .get(self.build_url("status"))
-            .timeout(Duration::from_millis(500))
-            .send();
-
-        let response = match response {
-            Ok(resp) => {
-                if resp.status().is_client_error() || resp.status().is_server_error() {
-                    log::error!("Error response: {:?}", resp);
-                    match resp.json::<Error>() {
-                        Ok(error) => return Err(error),
-                        Err(err) => {
-                            return Err(Error {
-                                message: err.to_string(),
-                                details: None,
-                            })
-                        }
-                    }
-                }
-                resp
-            }
-            Err(err) => {
-                log::error!("Error sending request: {}", err);
-                return Err(Error {
-                    message: err.to_string(),
-                    details: None,
-                });
-            }
-        };
-
-        log::debug!("Response: {:?}", response);
-
-        match response.json::<StatusResponse>() {
-            Ok(status) => Ok(status),
-            Err(err) => Err(Error {
-                message: err.to_string(),
-                details: None,
-            }),
-        }
-    }
-
-    pub fn get_key(&self, key_request: KeyRequest) -> Result<KeyResponse, Error> {
-        let client: reqwest::blocking::Client = reqwest::blocking::Client::new();
-
-        // // Create the json body
-        // let json_body = match key_request {
-        //     Some(request) => request,
-        //     None => &KeyRequest { number: Some(1), size: Some(256), additional_slave_SAE_IDs: None }
-        // };
-
-        let resp = client
-            .post(self.build_url("enc_keys"))
-            .timeout(Duration::from_millis(500))
-            .json(&key_request)
-            .send();
-
-        match resp {
-            Ok(response) => {
-                if response.status().is_client_error() || response.status().is_server_error() {
-                    match response.json::<Error>() {
-                        Ok(error) => Err(error),
-                        Err(err) => Err(Error {
-                            message: err.to_string(),
-                            details: None,
-                        }),
-                    }
-                } else {
-                    match response.json::<KeyResponse>() {
-                        Ok(key) => Ok(key),
-                        Err(err) => Err(Error {
-                            message: err.to_string(),
-                            details: None,
-                        }),
-                    }
-                }
-            }
-            Err(err) => Err(Error {
-                message: err.to_string(),
-                details: None,
-            }),
-        }
-    }
-
-    pub fn get_key_with_id(&self, key_with_id: &KeyIdRequest) -> Result<KeyResponse, Error> {
-        let client = reqwest::blocking::Client::new();
-
-        let resp = client
-            .post(self.build_url("dec_keys"))
-            .timeout(Duration::from_millis(500))
-            .json(&key_with_id)
-            .send();
-
-        match resp {
-            Ok(response) => {
-                if response.status().is_client_error() || response.status().is_server_error() {
-                    match response.json::<Error>() {
-                        Ok(error) => Err(error),
-                        Err(err) => Err(Error {
-                            message: err.to_string(),
-                            details: None,
-                        }),
-                    }
-                } else {
-                    match response.json::<KeyResponse>() {
-                        Ok(key) => Ok(key),
-                        Err(err) => Err(Error {
-                            message: err.to_string(),
-                            details: None,
-                        }),
-                    }
-                }
-            }
-            Err(err) => Err(Error {
-                message: err.to_string(),
-                details: None,
-            }),
-        }
+    /// Get key with key IDs (clause 5.4): `POST /api/v1/keys/{master_SAE_ID}/dec_keys`.
+    ///
+    /// `master_sae_id`: the peer SAE that originally obtained these keys via `enc_keys`.
+    /// This SAE acts as slave for them.
+    ///
+    /// The KME removes the keys from its pool once delivered, so if the response
+    /// is lost (e.g. a timeout while reading it) the keys cannot be fetched again.
+    pub fn get_key_with_id(
+        &self,
+        master_sae_id: &str,
+        key_with_id: &KeyIdRequest,
+    ) -> Result<KeyResponse, Etsi014Error> {
+        let url = self.build_url(master_sae_id, Method::DecKeys)?;
+        self.send(self.client.post(url).json(key_with_id))
     }
 }
 
 #[cfg(test)]
 mod test {
-    use crate::{KeyId, KeyIdRequest, KeyRequest};
+    use crate::{config::EndpointBuilder, Etsi014Error, KeyId, KeyIdRequest, KeyRequest};
 
     use super::Endpoint;
 
+    /// Endpoint pointing to a port where nothing listens.
+    fn unreachable_endpoint() -> Endpoint {
+        EndpointBuilder::<Endpoint>::new("http://127.0.0.1:8888")
+            .danger_allow_insecure_http()
+            .build()
+            .unwrap()
+    }
+
     #[test]
     fn status_test() {
-        let endpoint = Endpoint::new("127.0.0.1:8888", "bob", None, None).unwrap();
-
-        let _status = match endpoint.status() {
-            Ok(_) => panic!("Should not connect!"),
-            Err(_) => return,
-        };
+        let result = unreachable_endpoint().status("bob");
+        assert!(matches!(result, Err(Etsi014Error::Transport(_))));
     }
 
     #[test]
     fn get_key_test() {
-        let endpoint = Endpoint::new("127.0.0.1:8888", "bob", None, None).unwrap();
-
         let request = KeyRequest {
             number: Some(3),
             size: Some(256),
             additional_slave_SAE_IDs: None,
         };
 
-        let _keys = match endpoint.get_key(request) {
-            Ok(_) => panic!("Should not connect!"),
-            Err(_) => return,
-        };
+        let result = unreachable_endpoint().get_key("bob", &request);
+        assert!(matches!(result, Err(Etsi014Error::Transport(_))));
     }
 
     #[test]
     fn get_key_with_id_test() {
-        let endpoint = Endpoint::new("127.0.0.1:8888", "bob", None, None).unwrap();
-
-        let mut ids = Vec::new();
-        ids.push(KeyId {
-            key_ID: "0".to_string(),
-        });
-
-        let request = KeyIdRequest { key_IDs: ids };
-
-        let _keys = match endpoint.get_key_with_id(&request) {
-            Ok(_) => panic!("Should not connect!"),
-            Err(_) => return,
+        let request = KeyIdRequest {
+            key_IDs: vec![KeyId {
+                key_ID: "0".to_string(),
+            }],
         };
+
+        let result = unreachable_endpoint().get_key_with_id("alice", &request);
+        assert!(matches!(result, Err(Etsi014Error::Transport(_))));
     }
 }
