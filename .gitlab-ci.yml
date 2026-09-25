@@ -1,7 +1,7 @@
 stages: [build, test, docs, deploy]
 
 variables:
-  RUST_VERSION: "1.82"
+  RUST_VERSION: "1.88"
   CARGO_HOME: "/usr/local/cargo"
   CARGO_TARGET_DIR: "$CI_PROJECT_DIR/target"
   CARGO_TERM_COLOR: "always"
