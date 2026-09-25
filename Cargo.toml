@@ -19,7 +19,8 @@ url = "2.5.8"
 
 [dev-dependencies]
 tokio = { version = "1.53.1", features = ["full"] }
-tokio-test = "0.4.5"
+tokio-test = "0.4.6"
+rcgen = "0.14.10"
 
 [features]
 default = ["blocking"]

@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 
@@ -43,9 +45,38 @@ pub enum Etsi014Error {
     /// The SAE ID cannot be used as a URL path segment (empty, "." or "..").
     #[error("invalid SAE ID `{0}`")]
     InvalidSaeId(String),
+
+    /// A certificate or private key file could not be read.
+    #[error("failed to read `{}`: {source}", path.display())]
+    Io {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+
+    /// The root CA or the client identity is not valid PEM, or is missing
+    /// the certificate or the private key.
+    #[error("invalid {what} PEM: {reason}")]
+    InvalidPem {
+        /// `"root CA"` or `"client identity"`.
+        what: &'static str,
+        reason: String,
+    },
 }
 
 impl Etsi014Error {
+    /// reqwest reports PEM errors as a generic "builder error" with the
+    /// details in its source chain, so the whole chain is kept as the reason.
+    pub(crate) fn invalid_pem(what: &'static str, err: reqwest::Error) -> Self {
+        let mut reason = err.to_string();
+        let mut source = std::error::Error::source(&err);
+        while let Some(s) = source {
+            reason.push_str(&format!(": {s}"));
+            source = s.source();
+        }
+        Self::InvalidPem { what, reason }
+    }
+
     /// Classification of a KME error response, or `None` if the error
     /// did not come from a KME response (transport, decoding, configuration).
     ///
