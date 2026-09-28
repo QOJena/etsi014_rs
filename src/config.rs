@@ -12,7 +12,7 @@ const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);
 
 enum Pem {
     Inline(Vec<u8>),
-    File(PathBuf)
+    File(PathBuf),
 }
 
 impl Pem {
@@ -24,14 +24,13 @@ impl Pem {
     }
 }
 
-
 pub struct EndpointBuilder<T> {
     url: String,
     root_ca: Option<Pem>,
     identity: Option<(Pem, Pem)>,
     timeout: Duration,
     allow_insercurre_http: bool,
-    _flavor: PhantomData<fn() -> T>
+    _flavor: PhantomData<fn() -> T>,
 }
 
 impl<T> EndpointBuilder<T> {
@@ -42,7 +41,7 @@ impl<T> EndpointBuilder<T> {
             identity: None,
             timeout: DEFAULT_TIMEOUT,
             allow_insercurre_http: false,
-            _flavor: PhantomData
+            _flavor: PhantomData,
         }
     }
 
@@ -81,7 +80,7 @@ impl<T> EndpointBuilder<T> {
         match url.scheme() {
             "https" => Ok(url),
             "http" if self.allow_insercurre_http => Ok(url),
-            other => Err(Error::InsecureScheme(other.into()))
+            other => Err(Error::InsecureScheme(other.into())),
         }
     }
 
@@ -108,8 +107,8 @@ impl<T> EndpointBuilder<T> {
                 let mut pem = cert.load()?;
                 pem.push(b'\n');
                 pem.extend_from_slice(&key.load()?);
-                let identity = Identity::from_pem(&pem)
-                    .map_err(|e| Error::invalid_pem("client identity", e));
+                let identity =
+                    Identity::from_pem(&pem).map_err(|e| Error::invalid_pem("client identity", e));
                 pem.fill(0);
                 Some(identity?)
             }
@@ -140,7 +139,7 @@ impl EndpointBuilder<crate::client::Endpoint> {
 
         Ok(crate::client::Endpoint {
             client: client.build()?,
-            url
+            url,
         })
     }
 }
@@ -166,7 +165,7 @@ impl EndpointBuilder<crate::blocking::Endpoint> {
 
         Ok(crate::blocking::Endpoint {
             client: client.build()?,
-            url
+            url,
         })
     }
 }
@@ -198,8 +197,7 @@ mod test {
 
     impl TempPems {
         fn new(name: &str, cert: &str, key: &str) -> Self {
-            let dir = std::env::temp_dir()
-                .join(format!("etsi014-{}-{}", name, std::process::id()));
+            let dir = std::env::temp_dir().join(format!("etsi014-{}-{}", name, std::process::id()));
             std::fs::create_dir_all(&dir).unwrap();
             std::fs::write(dir.join("cert.pem"), cert).unwrap();
             std::fs::write(dir.join("key.pem"), key).unwrap();
@@ -229,7 +227,10 @@ mod test {
     #[test]
     fn inline_pem() {
         let (cert, key) = self_signed();
-        let result = builder().root_ca(cert.as_str()).identity_pem(cert, key).build();
+        let result = builder()
+            .root_ca(cert.as_str())
+            .identity_pem(cert, key)
+            .build();
         assert!(result.is_ok());
     }
 
@@ -280,7 +281,10 @@ mod test {
         let result = builder().root_ca("not a certificate").build();
         assert!(matches!(
             result,
-            Err(Error::InvalidPem { what: "root CA", .. })
+            Err(Error::InvalidPem {
+                what: "root CA",
+                ..
+            })
         ));
     }
 
@@ -290,7 +294,10 @@ mod test {
         let result = builder().identity_pem(cert, "").build();
         assert!(matches!(
             result,
-            Err(Error::InvalidPem { what: "client identity", .. })
+            Err(Error::InvalidPem {
+                what: "client identity",
+                ..
+            })
         ));
     }
 
@@ -300,7 +307,10 @@ mod test {
         let result = builder().identity_pem("", key).build();
         assert!(matches!(
             result,
-            Err(Error::InvalidPem { what: "client identity", .. })
+            Err(Error::InvalidPem {
+                what: "client identity",
+                ..
+            })
         ));
     }
 

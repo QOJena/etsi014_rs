@@ -1,12 +1,12 @@
-
-
 use etsi014::{Endpoint, KeyRequest};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
 
-    let endpoint= Endpoint::builder("https://kme.example.com").build().unwrap();
+    let endpoint = Endpoint::builder("https://kme.example.com")
+        .build()
+        .unwrap();
 
     let status = endpoint.status("alice").await;
 
@@ -19,7 +19,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    let key = endpoint.get_key("alice", &KeyRequest::new(Some(1), Some(256))).await;
+    let key = endpoint
+        .get_key("alice", &KeyRequest::new(Some(1), Some(256)))
+        .await;
     match key {
         Ok(key_response) => {
             println!("Key: {:?}", key_response);

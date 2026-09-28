@@ -1,10 +1,13 @@
 [package]
 name = "etsi014"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
+rust-version = "1.88"
 description = "Client for the ETSI GS QKD 014 key delivery REST API"
 license = "MIT"
 repository = "https://github.com/QOJena/etsi014_rs"
+readme = "README.md"
+keywords = ["qkd", "etsi", "quantum", "key-management", "cryptography"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.htm
 
@@ -12,10 +15,8 @@ repository = "https://github.com/QOJena/etsi014_rs"
 reqwest = { version = "0.13.5", features = ["blocking", "json", "rustls"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
-http = "1.5.0"
 env_logger = "0.11.11"
 log = "0.4.34"
-anyhow = "1.0.104"
 thiserror = "2.0.21"
 url = "2.5.8"
 

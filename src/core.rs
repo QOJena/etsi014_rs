@@ -13,7 +13,7 @@ const MAX_RAW_ERROR_BODY: usize = 512;
 pub(crate) enum Method {
     Status,
     EncKeys,
-    DecKeys
+    DecKeys,
 }
 
 impl Method {
@@ -21,11 +21,10 @@ impl Method {
         match self {
             Method::Status => "status",
             Method::EncKeys => "enc_keys",
-            Method::DecKeys => "dec_keys"
+            Method::DecKeys => "dec_keys",
         }
     }
 }
-
 
 pub(crate) fn build_url(base: &Url, sae_id: &str, method: Method) -> Result<Url, Etsi014Error> {
     if sae_id.is_empty() || sae_id == "." || sae_id == ".." {
@@ -47,7 +46,10 @@ pub(crate) fn build_url(base: &Url, sae_id: &str, method: Method) -> Result<Url,
 /// - otherwise: `body` is decoded as [`ApiError`] if possible (spec: 400 and 503);
 ///   it may also be empty (spec: 401) or not JSON at all (e.g. a proxy error page),
 ///   in which case a truncated copy is kept in `raw`.
-pub(crate) fn decode<T: DeserializeOwned>(status: StatusCode, body: &[u8]) -> Result<T, Etsi014Error> {
+pub(crate) fn decode<T: DeserializeOwned>(
+    status: StatusCode,
+    body: &[u8],
+) -> Result<T, Etsi014Error> {
     if status.is_success() {
         return Ok(serde_json::from_slice(body)?);
     }
@@ -60,7 +62,11 @@ pub(crate) fn decode<T: DeserializeOwned>(status: StatusCode, body: &[u8]) -> Re
         None
     };
 
-    Err(Etsi014Error::Api { status, body: api, raw })
+    Err(Etsi014Error::Api {
+        status,
+        body: api,
+        raw,
+    })
 }
 
 #[cfg(test)]
@@ -88,13 +94,23 @@ mod tests {
     #[test]
     fn success_with_invalid_body_is_decode_error() {
         assert!(matches!(err(StatusCode::OK, ""), Etsi014Error::Decode(_)));
-        assert!(matches!(err(StatusCode::OK, r#"{"other": 1}"#), Etsi014Error::Decode(_)));
+        assert!(matches!(
+            err(StatusCode::OK, r#"{"other": 1}"#),
+            Etsi014Error::Decode(_)
+        ));
     }
 
     #[test]
     fn unauthorized_without_body() {
         let e = err(StatusCode::UNAUTHORIZED, "");
-        assert!(matches!(e, Etsi014Error::Api { body: None, raw: None, .. }));
+        assert!(matches!(
+            e,
+            Etsi014Error::Api {
+                body: None,
+                raw: None,
+                ..
+            }
+        ));
         assert_eq!(e.status(), Some(StatusCode::UNAUTHORIZED));
         assert_eq!(e.kind(), Some(ApiErrorKind::Unauthorized));
     }
@@ -105,23 +121,45 @@ mod tests {
             StatusCode::BAD_REQUEST,
             r#"{"message": "one or more keys specified are not found on KME"}"#,
         );
-        assert_eq!(e.api_error().unwrap().message, "one or more keys specified are not found on KME");
+        assert_eq!(
+            e.api_error().unwrap().message,
+            "one or more keys specified are not found on KME"
+        );
         assert_eq!(e.kind(), Some(ApiErrorKind::KeysNotFound));
     }
 
     #[test]
     fn spec_messages_are_classified() {
         let cases = [
-            ("size shall be a multiple of 8", ApiErrorKind::SizeNotMultipleOf8),
-            ("not all extension_mandatory parameters are supported", ApiErrorKind::ExtensionMandatoryUnsupported),
-            ("not all extension_mandatory request options could be met", ApiErrorKind::ExtensionMandatoryUnmet),
-            ("not all extension_optional request options handled", ApiErrorKind::ExtensionOptionalNotHandled),
-            ("  Size shall be a multiple of 8.  ", ApiErrorKind::SizeNotMultipleOf8),
+            (
+                "size shall be a multiple of 8",
+                ApiErrorKind::SizeNotMultipleOf8,
+            ),
+            (
+                "not all extension_mandatory parameters are supported",
+                ApiErrorKind::ExtensionMandatoryUnsupported,
+            ),
+            (
+                "not all extension_mandatory request options could be met",
+                ApiErrorKind::ExtensionMandatoryUnmet,
+            ),
+            (
+                "not all extension_optional request options handled",
+                ApiErrorKind::ExtensionOptionalNotHandled,
+            ),
+            (
+                "  Size shall be a multiple of 8.  ",
+                ApiErrorKind::SizeNotMultipleOf8,
+            ),
             ("something else", ApiErrorKind::BadRequest),
         ];
         for (message, kind) in cases {
             let body = format!(r#"{{"message": "{message}"}}"#);
-            assert_eq!(err(StatusCode::BAD_REQUEST, &body).kind(), Some(kind), "{message}");
+            assert_eq!(
+                err(StatusCode::BAD_REQUEST, &body).kind(),
+                Some(kind),
+                "{message}"
+            );
         }
     }
 
@@ -137,7 +175,10 @@ mod tests {
 
     #[test]
     fn service_unavailable() {
-        let e = err(StatusCode::SERVICE_UNAVAILABLE, r#"{"message": "key data access error"}"#);
+        let e = err(
+            StatusCode::SERVICE_UNAVAILABLE,
+            r#"{"message": "key data access error"}"#,
+        );
         assert_eq!(e.kind(), Some(ApiErrorKind::ServiceUnavailable));
     }
 
@@ -146,7 +187,11 @@ mod tests {
         let html = format!("<html>{}</html>", "x".repeat(1000));
         let e = err(StatusCode::BAD_GATEWAY, &html);
         match &e {
-            Etsi014Error::Api { body: None, raw: Some(raw), .. } => {
+            Etsi014Error::Api {
+                body: None,
+                raw: Some(raw),
+                ..
+            } => {
                 assert_eq!(raw.len(), MAX_RAW_ERROR_BODY);
                 assert!(raw.starts_with("<html>"));
             }

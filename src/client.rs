@@ -3,7 +3,9 @@ use serde::de::DeserializeOwned;
 use url::Url;
 
 use crate::{
-    Etsi014Error, KeyIdRequest, KeyRequest, KeyResponse, StatusResponse, config::EndpointBuilder, core::{self, Method},
+    Etsi014Error, KeyIdRequest, KeyRequest, KeyResponse, StatusResponse,
+    config::EndpointBuilder,
+    core::{self, Method},
 };
 
 /// Defines the ETSI 014 endpoint of a QKD device (a KME).
@@ -39,18 +41,13 @@ pub struct Endpoint {
 }
 
 impl Endpoint {
-
     pub fn builder(url: impl Into<String>) -> EndpointBuilder<Self> {
         EndpointBuilder::new(url)
     }
 
     /// Build the full URL for a given ETSI 014 path.
     fn build_url(&self, peer_sae_id: &str, method: Method) -> Result<Url, Etsi014Error> {
-        core::build_url(
-            &self.url,
-            peer_sae_id,
-            method
-        )
+        core::build_url(&self.url, peer_sae_id, method)
     }
 
     /// Send a request and decode the KME response into `T`.

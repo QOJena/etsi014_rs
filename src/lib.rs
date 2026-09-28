@@ -3,11 +3,11 @@
 pub mod blocking;
 
 mod client;
+mod config;
 mod core;
 mod error;
 mod key;
 mod models;
-mod config;
 
 pub use client::Endpoint;
 pub use error::{ApiError, ApiErrorKind, Etsi014Error};
