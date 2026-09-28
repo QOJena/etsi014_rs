@@ -3,7 +3,6 @@ use std::{marker::PhantomData, time::Duration};
 
 use reqwest::{Certificate, Identity, Url};
 
-
 use crate::error::Etsi014Error as Error;
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);
