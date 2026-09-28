@@ -2,6 +2,9 @@
 name = "etsi014"
 version = "0.3.0"
 edition = "2024"
+description = "Client for the ETSI GS QKD 014 key delivery REST API"
+license = "MIT"
+repository = "https://github.com/QOJena/etsi014_rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.htm
 

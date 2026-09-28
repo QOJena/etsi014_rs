@@ -16,7 +16,7 @@ It covers the three endpoints of the spec:
 
 ```toml
 [dependencies]
-etsi014 = { git = "https://github.com/<owner>/etsi014_rs" }
+etsi014 = { git = "https://github.com/QOJena/etsi014_rs" }
 ```
 
 ## Usage
@@ -132,4 +132,4 @@ cargo fmt --check
 
 ## License
 
-TODO
+Licensed under the [MIT license](LICENSE).

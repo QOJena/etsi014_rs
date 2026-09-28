@@ -6,7 +6,7 @@ use etsi014::{Endpoint, KeyRequest};
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
 
-    let endpoint= Endpoint::builder("https://192.168.1.132").build().unwrap();
+    let endpoint= Endpoint::builder("https://kme.example.com").build().unwrap();
 
     let status = endpoint.status("alice").await;
 
