@@ -1,10 +1,8 @@
 use std::path::PathBuf;
 use std::{marker::PhantomData, time::Duration};
 
-use log::error;
 use reqwest::{Certificate, Identity, Url};
 
-use crate::client::Endpoint;
 
 use crate::error::Etsi014Error as Error;
 
