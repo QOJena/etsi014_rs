@@ -12,23 +12,23 @@ keywords = ["qkd", "etsi", "quantum", "key-management", "cryptography"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.htm
 
 [dependencies]
-reqwest = { version = "0.13.5", features = ["blocking", "json", "rustls"] }
+reqwest = { version = "0.13.5", features = ["json", "rustls"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
-env_logger = "0.11.11"
 log = "0.4.34"
 thiserror = "2.0.21"
 url = "2.5.8"
 
 
 [dev-dependencies]
+env_logger = "0.11.11"
 tokio = { version = "1.53.1", features = ["full"] }
 tokio-test = "0.4.6"
 rcgen = "0.14.10"
 
 [features]
 default = ["blocking"]
-blocking = []
+blocking = ["reqwest/blocking"]
 
 
 # [[example]]
