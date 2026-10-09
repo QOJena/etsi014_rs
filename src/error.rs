@@ -4,6 +4,16 @@ use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 
 /// Errors returned by this crate.
+///
+/// Errors fall into three groups:
+///
+/// - Configuration, from [`EndpointBuilder::build`](crate::EndpointBuilder::build):
+///   [`InvalidUrl`](Self::InvalidUrl), [`InsecureScheme`](Self::InsecureScheme),
+///   [`Io`](Self::Io), [`InvalidPem`](Self::InvalidPem).
+/// - Errors reported by the KME: [`Api`](Self::Api). Use [`kind`](Self::kind)
+///   to match them against the cases of the spec.
+/// - Other request failures: [`Transport`](Self::Transport),
+///   [`Decode`](Self::Decode), [`InvalidSaeId`](Self::InvalidSaeId).
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Etsi014Error {
@@ -33,8 +43,12 @@ pub enum Etsi014Error {
         .body.as_ref().map(|b| format!(": {}", b.message)).unwrap_or_default()
     )]
     Api {
+        /// HTTP status of the response.
         status: StatusCode,
+        /// Error body (clause 6.5), if the KME sent one.
         body: Option<ApiError>,
+        /// Start of the body (at most 512 bytes) if it was not a valid
+        /// [`ApiError`].
         raw: Option<String>,
     },
 
@@ -49,7 +63,9 @@ pub enum Etsi014Error {
     /// A certificate or private key file could not be read.
     #[error("failed to read `{}`: {source}", path.display())]
     Io {
+        /// File that could not be read.
         path: PathBuf,
+        /// Underlying I/O error.
         #[source]
         source: std::io::Error,
     },
@@ -60,6 +76,7 @@ pub enum Etsi014Error {
     InvalidPem {
         /// `"root CA"` or `"client identity"`.
         what: &'static str,
+        /// Description of the problem.
         reason: String,
     },
 }
@@ -84,6 +101,21 @@ impl Etsi014Error {
     /// by the exact messages from ETSI GS QKD 014. KMEs that word their
     /// messages differently fall back to [`ApiErrorKind::BadRequest`] or
     /// [`ApiErrorKind::Other`].
+    ///
+    /// ```
+    /// use etsi014::{ApiError, ApiErrorKind, Etsi014Error};
+    /// use reqwest::StatusCode;
+    ///
+    /// let err = Etsi014Error::Api {
+    ///     status: StatusCode::BAD_REQUEST,
+    ///     body: Some(ApiError::new("size shall be a multiple of 8".into())),
+    ///     raw: None,
+    /// };
+    /// assert_eq!(err.kind(), Some(ApiErrorKind::SizeNotMultipleOf8));
+    ///
+    /// let err = Etsi014Error::InvalidSaeId(String::new());
+    /// assert_eq!(err.kind(), None);
+    /// ```
     pub fn kind(&self) -> Option<ApiErrorKind> {
         match self {
             Self::Api { status, body, .. } => Some(ApiErrorKind::classify(
@@ -95,6 +127,14 @@ impl Etsi014Error {
     }
 
     /// HTTP status returned by the KME, if the error came from a KME response.
+    ///
+    /// ```
+    /// use etsi014::Etsi014Error;
+    /// use reqwest::StatusCode;
+    ///
+    /// let err = Etsi014Error::Api { status: StatusCode::UNAUTHORIZED, body: None, raw: None };
+    /// assert_eq!(err.status(), Some(StatusCode::UNAUTHORIZED));
+    /// ```
     pub fn status(&self) -> Option<StatusCode> {
         match self {
             Self::Api { status, .. } => Some(*status),
@@ -103,7 +143,17 @@ impl Etsi014Error {
         }
     }
 
-    /// Error body sent by the KME, if any.
+    /// Error body (clause 6.5) sent by the KME, if any.
+    ///
+    /// ```no_run
+    /// # async fn run(endpoint: etsi014::Endpoint) {
+    /// if let Err(e) = endpoint.status("SAE_B").await {
+    ///     if let Some(body) = e.api_error() {
+    ///         eprintln!("KME says: {} ({:?})", body.message, body.details);
+    ///     }
+    /// }
+    /// # }
+    /// ```
     pub fn api_error(&self) -> Option<&ApiError> {
         match self {
             Self::Api { body, .. } => body.as_ref(),
@@ -114,6 +164,9 @@ impl Etsi014Error {
 
 /// Kind of error reported by a KME, as defined by ETSI GS QKD 014
 /// (Tables 4, 6 and 8, clauses 6.2 and 6.4).
+///
+/// Returned by [`Etsi014Error::kind`]. New kinds may be added, so `match`
+/// statements need a wildcard arm.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ApiErrorKind {

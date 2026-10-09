@@ -21,6 +21,46 @@ impl Pem {
     }
 }
 
+/// Builder for [`Endpoint`](crate::Endpoint) and, with the `blocking`
+/// feature, `blocking::Endpoint`.
+///
+/// Created with [`Endpoint::builder`](crate::Endpoint::builder). Every
+/// option is optional; [`build`](EndpointBuilder::build) validates the URL,
+/// reads and parses certificates, and creates the HTTP client.
+///
+/// | Option | Default |
+/// |---|---|
+/// | [`root_ca`](Self::root_ca) / [`root_ca_file`](Self::root_ca_file) | system roots only |
+/// | [`identity_pem`](Self::identity_pem) / [`identity_files`](Self::identity_files) | no client certificate |
+/// | [`timeout`](Self::timeout) | 5 seconds |
+/// | [`danger_allow_insecure_http`](Self::danger_allow_insecure_http) | HTTPS only |
+///
+/// # Example
+///
+/// ```no_run
+/// use std::time::Duration;
+/// use etsi014::Endpoint;
+///
+/// let endpoint = Endpoint::builder("https://kme-a.example.com")
+///     .root_ca_file("certs/ca.crt")
+///     .identity_files("certs/sae_a.crt", "certs/sae_a.key")
+///     .timeout(Duration::from_secs(10))
+///     .build()?;
+/// # Ok::<(), etsi014::Etsi014Error>(())
+/// ```
+///
+/// Certificates can also be passed directly, e.g. when they come from
+/// environment variables or a secret store:
+///
+/// ```no_run
+/// use etsi014::Endpoint;
+///
+/// let endpoint = Endpoint::builder("https://kme-a.example.com")
+///     .root_ca(std::env::var("KME_CA_PEM")?)
+///     .identity_pem(std::env::var("SAE_CERT_PEM")?, std::env::var("SAE_KEY_PEM")?)
+///     .build()?;
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 pub struct EndpointBuilder<T> {
     url: String,
     root_ca: Option<Pem>,
@@ -42,31 +82,127 @@ impl<T> EndpointBuilder<T> {
         }
     }
 
+    /// Trusts the PEM encoded CA certificate(s) in `cert` to verify the KME,
+    /// in addition to the system roots.
+    ///
+    /// `cert` may hold several certificates (a CA bundle). Replaces any
+    /// previous call to [`root_ca`](Self::root_ca) or
+    /// [`root_ca_file`](Self::root_ca_file).
+    ///
+    /// # Errors
+    ///
+    /// [`build`](Self::build) fails with
+    /// [`Etsi014Error::InvalidPem`](crate::Etsi014Error::InvalidPem) if `cert`
+    /// contains no certificate.
+    ///
+    /// ```
+    /// use etsi014::{Endpoint, Etsi014Error};
+    ///
+    /// let result = Endpoint::builder("https://kme.example.com")
+    ///     .root_ca("not a certificate")
+    ///     .build();
+    /// assert!(matches!(result, Err(Etsi014Error::InvalidPem { what: "root CA", .. })));
+    /// ```
     pub fn root_ca(mut self, cert: impl Into<Vec<u8>>) -> Self {
         self.root_ca = Some(Pem::Inline(cert.into()));
         self
     }
 
+    /// Same as [`root_ca`](Self::root_ca), but reads the PEM from `path`.
+    ///
+    /// The file is read by [`build`](Self::build), not by this method.
+    ///
+    /// # Errors
+    ///
+    /// [`build`](Self::build) fails with
+    /// [`Etsi014Error::Io`](crate::Etsi014Error::Io) if the file cannot be read.
+    ///
+    /// ```
+    /// use etsi014::{Endpoint, Etsi014Error};
+    ///
+    /// let result = Endpoint::builder("https://kme.example.com")
+    ///     .root_ca_file("/nonexistent/ca.crt")
+    ///     .build();
+    /// assert!(matches!(result, Err(Etsi014Error::Io { .. })));
+    /// ```
     pub fn root_ca_file(mut self, path: impl Into<PathBuf>) -> Self {
         self.root_ca = Some(Pem::File(path.into()));
         self
     }
 
+    /// Authenticates this SAE to the KME with a PEM encoded client
+    /// certificate and private key (mutual TLS).
+    ///
+    /// - `cert` may be followed by its certificate chain.
+    /// - `key` may be PKCS#8, PKCS#1 (RSA) or SEC1 (EC).
+    /// - If certificate and key are in a single PEM, pass it as `cert` and an
+    ///   empty `key`.
+    ///
+    /// ```no_run
+    /// # use etsi014::Endpoint;
+    /// let combined = std::fs::read("certs/sae_a.pem")?;
+    /// let endpoint = Endpoint::builder("https://kme-a.example.com")
+    ///     .identity_pem(combined, "")
+    ///     .build()?;
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    ///
+    /// Replaces any previous call to [`identity_pem`](Self::identity_pem) or
+    /// [`identity_files`](Self::identity_files).
+    ///
+    /// # Errors
+    ///
+    /// [`build`](Self::build) fails with
+    /// [`Etsi014Error::InvalidPem`](crate::Etsi014Error::InvalidPem) if the
+    /// certificate or the private key is missing or invalid.
     pub fn identity_pem(mut self, cert: impl Into<Vec<u8>>, key: impl Into<Vec<u8>>) -> Self {
         self.identity = Some((Pem::Inline(cert.into()), Pem::Inline(key.into())));
         self
     }
 
+    /// Same as [`identity_pem`](Self::identity_pem), but reads the
+    /// certificate and private key from files.
+    ///
+    /// The files are read by [`build`](Self::build), not by this method.
+    ///
+    /// # Errors
+    ///
+    /// [`build`](Self::build) fails with
+    /// [`Etsi014Error::Io`](crate::Etsi014Error::Io) if a file cannot be read,
+    /// and as described in [`identity_pem`](Self::identity_pem) otherwise.
     pub fn identity_files(mut self, cert: impl Into<PathBuf>, key: impl Into<PathBuf>) -> Self {
         self.identity = Some((Pem::File(cert.into()), Pem::File(key.into())));
         self
     }
 
+    /// Sets the timeout of each request, from connecting until the response
+    /// body has been read. Defaults to 5 seconds.
+    ///
+    /// Keep in mind that keys fetched with `get_key_with_id` are removed
+    /// from the KME once delivered: if the timeout expires while the response
+    /// is being read, those keys are lost.
     pub fn timeout(mut self, t: Duration) -> Self {
         self.timeout = t;
         self
     }
 
+    /// Allows `http://` URLs.
+    ///
+    /// ETSI GS QKD 014 requires HTTPS; without this, [`build`](Self::build)
+    /// rejects any other scheme. Only use it against a local KME simulator
+    /// in tests: keys would otherwise travel in clear text.
+    ///
+    /// ```
+    /// use etsi014::{Endpoint, Etsi014Error};
+    ///
+    /// let result = Endpoint::builder("http://localhost:8080").build();
+    /// assert!(matches!(result, Err(Etsi014Error::InsecureScheme(_))));
+    ///
+    /// let endpoint = Endpoint::builder("http://localhost:8080")
+    ///     .danger_allow_insecure_http()
+    ///     .build()?;
+    /// # Ok::<(), Etsi014Error>(())
+    /// ```
     pub fn danger_allow_insecure_http(mut self) -> Self {
         self.allow_insercurre_http = true;
         self
@@ -117,6 +253,26 @@ impl<T> EndpointBuilder<T> {
 }
 
 impl EndpointBuilder<crate::client::Endpoint> {
+    /// Validates the configuration and creates the async [`Endpoint`](crate::Endpoint).
+    ///
+    /// No request is sent to the KME yet.
+    ///
+    /// # Errors
+    ///
+    /// - [`Etsi014Error::InvalidUrl`](crate::Etsi014Error::InvalidUrl): the URL cannot be parsed.
+    /// - [`Etsi014Error::InsecureScheme`](crate::Etsi014Error::InsecureScheme): the URL is not
+    ///   `https` (see [`danger_allow_insecure_http`](Self::danger_allow_insecure_http)).
+    /// - [`Etsi014Error::Io`](crate::Etsi014Error::Io): a certificate or key file cannot be read.
+    /// - [`Etsi014Error::InvalidPem`](crate::Etsi014Error::InvalidPem): a certificate or key is invalid.
+    /// - [`Etsi014Error::Transport`](crate::Etsi014Error::Transport): the HTTP client cannot be created.
+    ///
+    /// ```
+    /// use etsi014::Endpoint;
+    ///
+    /// let endpoint = Endpoint::builder("https://kme.example.com").build()?;
+    /// assert_eq!(endpoint.url.as_str(), "https://kme.example.com/");
+    /// # Ok::<(), etsi014::Etsi014Error>(())
+    /// ```
     pub fn build(mut self) -> Result<crate::client::Endpoint, Error> {
         let url = self.validate_url()?;
         let (root_ca, identity) = self.load_tls()?;
@@ -143,6 +299,25 @@ impl EndpointBuilder<crate::client::Endpoint> {
 
 #[cfg(feature = "blocking")]
 impl EndpointBuilder<crate::blocking::Endpoint> {
+    /// Validates the configuration and creates the [`blocking::Endpoint`](crate::blocking::Endpoint).
+    ///
+    /// No request is sent to the KME yet.
+    ///
+    /// # Errors
+    ///
+    /// - [`Etsi014Error::InvalidUrl`](crate::Etsi014Error::InvalidUrl): the URL cannot be parsed.
+    /// - [`Etsi014Error::InsecureScheme`](crate::Etsi014Error::InsecureScheme): the URL is not
+    ///   `https` (see [`danger_allow_insecure_http`](Self::danger_allow_insecure_http)).
+    /// - [`Etsi014Error::Io`](crate::Etsi014Error::Io): a certificate or key file cannot be read.
+    /// - [`Etsi014Error::InvalidPem`](crate::Etsi014Error::InvalidPem): a certificate or key is invalid.
+    /// - [`Etsi014Error::Transport`](crate::Etsi014Error::Transport): the HTTP client cannot be created.
+    ///
+    /// ```
+    /// use etsi014::blocking::Endpoint;
+    ///
+    /// let endpoint = Endpoint::builder("https://kme.example.com").build()?;
+    /// # Ok::<(), etsi014::Etsi014Error>(())
+    /// ```
     pub fn build(mut self) -> Result<crate::blocking::Endpoint, Error> {
         let url = self.validate_url()?;
         let (root_ca, identity) = self.load_tls()?;

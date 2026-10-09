@@ -1,3 +1,28 @@
+//! Synchronous client, enabled by the `blocking` feature.
+//!
+//! [`Endpoint`] has the same methods as the async [`crate::Endpoint`], but
+//! they block the current thread until the KME answers.
+//!
+//! ```toml
+//! [dependencies]
+//! etsi014 = { version = "0.4", features = ["blocking"] }
+//! ```
+//!
+//! ```no_run
+//! use etsi014::KeyRequest;
+//! use etsi014::blocking::Endpoint;
+//!
+//! let endpoint = Endpoint::builder("https://kme-a.example.com")
+//!     .root_ca_file("certs/ca.crt")
+//!     .identity_files("certs/sae_a.crt", "certs/sae_a.key")
+//!     .build()?;
+//!
+//! let status = endpoint.status("SAE_B")?;
+//! let response = endpoint.get_key("SAE_B", &KeyRequest::new(Some(1), Some(status.key_size)))?;
+//! println!("{}", response.keys[0].key_ID);
+//! # Ok::<(), etsi014::Etsi014Error>(())
+//! ```
+
 use reqwest::blocking::{Client, RequestBuilder};
 use serde::de::DeserializeOwned;
 use url::Url;
@@ -10,17 +35,37 @@ use crate::{
 
 /// Blocking version of [`crate::Endpoint`].
 ///
-/// Do not create or drop it inside an async runtime (e.g. Tokio):
-/// `reqwest`'s blocking client panics there.
+/// Create one with [`Endpoint::builder`]. See [`crate::Endpoint`] for
+/// details on each request and the errors it returns.
+///
+/// # Panics
+///
+/// Do not create, use or drop it inside an async runtime (e.g. Tokio):
+/// `reqwest`'s blocking client panics there. In async code, use
+/// [`crate::Endpoint`] instead.
 #[derive(Debug, Clone)]
 pub struct Endpoint {
     /// Base URL of the local KME (`https://{KME_hostname}`).
+    ///
+    /// Request paths (`/api/v1/keys/...`) are appended to it, so it may
+    /// include a path prefix, e.g. `https://kme.example.com/qkd`.
     pub url: Url,
     /// Internal client used to send requests.
     pub(crate) client: Client,
 }
 
 impl Endpoint {
+    /// Starts building a blocking endpoint for the KME at `url`
+    /// (`https://{KME_hostname}`).
+    ///
+    /// See [`EndpointBuilder`] for the TLS and timeout options.
+    ///
+    /// ```
+    /// use etsi014::blocking::Endpoint;
+    ///
+    /// let endpoint = Endpoint::builder("https://kme.example.com").build()?;
+    /// # Ok::<(), etsi014::Etsi014Error>(())
+    /// ```
     pub fn builder(url: impl Into<String>) -> EndpointBuilder<Self> {
         EndpointBuilder::new(url)
     }
@@ -44,6 +89,8 @@ impl Endpoint {
     /// Get status (ETSI GS QKD 014, clause 5.2): `GET /api/v1/keys/{slave_SAE_ID}/status`.
     ///
     /// `slave_sae_id`: the peer SAE you would request keys for (this SAE acts as master).
+    ///
+    /// See [`crate::Endpoint::status`] for the errors.
     pub fn status(&self, slave_sae_id: &str) -> Result<StatusResponse, Etsi014Error> {
         let url = self.build_url(slave_sae_id, Method::Status)?;
         self.send(self.client.get(url))
@@ -53,6 +100,8 @@ impl Endpoint {
     ///
     /// `slave_sae_id`: the peer SAE that will later fetch the same keys via `dec_keys`.
     /// This SAE becomes the master for the returned keys.
+    ///
+    /// See [`crate::Endpoint::get_key`] for the errors.
     pub fn get_key(
         &self,
         slave_sae_id: &str,
@@ -69,6 +118,19 @@ impl Endpoint {
     ///
     /// The KME removes the keys from its pool once delivered, so if the response
     /// is lost (e.g. a timeout while reading it) the keys cannot be fetched again.
+    ///
+    /// See [`crate::Endpoint::get_key_with_id`] for the errors.
+    ///
+    /// ```no_run
+    /// use etsi014::{KeyId, KeyIdRequest};
+    /// # let endpoint = etsi014::blocking::Endpoint::builder("https://kme-b.example.com").build()?;
+    ///
+    /// let request = KeyIdRequest::new(vec![KeyId {
+    ///     key_ID: "bc490419-7d60-487f-adc1-4ddcc177c139".into(),
+    /// }]);
+    /// let response = endpoint.get_key_with_id("SAE_A", &request)?;
+    /// # Ok::<(), etsi014::Etsi014Error>(())
+    /// ```
     pub fn get_key_with_id(
         &self,
         master_sae_id: &str,
