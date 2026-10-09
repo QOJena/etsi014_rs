@@ -1,6 +1,6 @@
 [package]
 name = "etsi014"
-version = "0.4.0"
+version = "0.4.1"
 edition = "2024"
 rust-version = "1.88"
 description = "Client for the ETSI GS QKD 014 key delivery REST API"
